@@ -1,0 +1,485 @@
+<!DOCTYPE html><html><head><base href="https://raw.githubusercontent.com/aschrand/Obsidian-git/master/"><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Retro Shoot 'Em Up Game</title>
+<style>
+  body {
+    margin: 0;
+    padding: 0;
+    background-color: #000;
+    overflow: hidden;
+  }
+  #gameCanvas {
+    display: block;
+    margin: 0 auto;
+  }
+</style>
+</head>
+<body>
+<canvas id="gameCanvas"></canvas>
+<script>
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+
+canvas.width = window.innerWidth;
+canvas.height = window.innerHeight;
+
+const player = {
+  x: canvas.width / 2,
+  y: canvas.height - 100,
+  width: 76,
+  height: 92,
+  speed: 5,
+  dx: 0,
+  dy: 0,
+  bullets: [],
+  frameIndex: 0,
+  tickCount: 0,
+  ticksPerFrame: 10,
+  direction: 'default',
+  lastX: canvas.width / 2,
+  guns: 3,
+  isShooting: false,
+  lastShot: 0,
+  fireRate: 100, // milliseconds between shots
+  health: 100,
+  maxHealth: 100,
+  isFlickering: false,
+  flickerTime: 0,
+  flickerDuration: 30, // frames
+  invincibilityTime: 0,
+  invincibilityDuration: 60, // frames
+  score: 0
+};
+
+const enemies = [];
+const playerSprites = {
+  default: [
+    'https://media.discordapp.net/attachments/1249904363590254696/1269726096346185821/player_1a.png?ex=66b11c13&is=66afca93&hm=2b112021fe44f9870a904e6428703272ceb0368eba566b01c5e24c93207126d1&=&format=webp&quality=lossless&width=76&height=92',
+    'https://media.discordapp.net/attachments/1249904363590254696/1269726195474501715/player_2.png?ex=66b11c2b&is=66afcaab&hm=b471586016b0545a36007fd07c83497119cbb7e12e9e8ceba198365cad66c77c&=&format=webp&quality=lossless&width=76&height=92',
+    'https://media.discordapp.net/attachments/1249904363590254696/1269726228621950996/player_3.png?ex=66b11c33&is=66afcab3&hm=8385d0496c9aae89ccce445cec867297b16e79ad642a5bb5195f3ed0723aea0a&=&format=webp&quality=lossless&width=76&height=92'
+  ],
+  left: [
+    'https://media.discordapp.net/attachments/1249904363590254696/1269384504452317194/player_left-1.png?ex=66b086b1&is=66af3531&hm=0b1f429ac7cd98721c99c8335ca3b3a0bca014f2d1edb2c720d8e5498f9719d2&=&format=webp&quality=lossless&width=76&height=92',
+    'https://media.discordapp.net/attachments/1249904363590254696/1269384455022444736/player_left-2.png?ex=66b086a6&is=66af3526&hm=ff1d18f2ff1a01fd0dba8eb35605c513d3f21c807e604b54a459a036fecba8fc&=&format=webp&quality=lossless&width=76&height=92',
+    'https://media.discordapp.net/attachments/1249904363590254696/1269384455311589548/player_left-3.png?ex=66b086a6&is=66af3526&hm=e1e5afcbe1f15e63f83bc4a9ec3c23002298c74dc0f3ce22748ac5fc082a04a3&=&format=webp&quality=lossless&width=76&height=92'
+  ],
+  right: [
+    'https://media.discordapp.net/attachments/1249904363590254696/1269384455533891635/player_right-1.png?ex=66b086a6&is=66af3526&hm=9d9a4dac581ed4b294a06bfc48ee666056135b07ac9d2f93ae5dc5f27e71d5e0&=&format=webp&quality=lossless&width=76&height=92',
+    'https://media.discordapp.net/attachments/1249904363590254696/1269384455810973885/player_right-2.png?ex=66b086a6&is=66af3526&hm=ce73acb30623168900c93e75c5f632e43411136a4912ce00d87388d44893eb0e&=&format=webp&quality=lossless&width=76&height=92',
+    'https://media.discordapp.net/attachments/1249904363590254696/1269384456058306633/player_right-3.png?ex=66b086a6&is=66af3526&hm=f0cd24706345c290c42562643df4ff17d539e5669efb2c9e82dfefd64c5210fd&=&format=webp&quality=lossless&width=76&height=92'
+  ]
+};
+
+const playerImages = {
+  default: [],
+  left: [],
+  right: []
+};
+
+// Preload all player images
+for (const direction in playerSprites) {
+  playerSprites[direction].forEach((src, index) => {
+    playerImages[direction][index] = new Image();
+    playerImages[direction][index].src = src;
+    playerImages[direction][index].onerror = function() {
+        console.log('Failed to load image:', src);
+        playerImages[direction][index] = null;  // Set to null on error
+    };
+  });
+}
+
+// Load bullet sprite
+const bulletSprite = new Image();
+bulletSprite.src = 'https://media.discordapp.net/attachments/1249904363590254696/1269174008704663642/sr2f15ef39eb2aws3.webp?ex=66b11427&is=66afc2a7&hm=8a81409db4082b1c4486578f390a4738293793a9c1563897244499a4274cfea0&=&format=webp&width=972&height=972';
+
+// Load enemy sprite
+const enemySprite = new Image();
+enemySprite.src = 'https://media.discordapp.net/attachments/1249904363590254696/1269446197400043530/8fabf2eb407b715315a49f4c67ac4908.png?ex=66b0c026&is=66af6ea6&hm=59754e5561ce45f4f8773917be6cddddb7d6c51fd5dc58a706daff752859ab32&=&format=webp&quality=lossless&width=571&height=571';
+
+// Load hit effect sprite (changed to new explosion sprite)
+const hitEffectSprite = new Image();
+hitEffectSprite.src = 'https://media.discordapp.net/attachments/1249904363590254696/1269192578750746726/sprite-explosion-animated-film-2d-computer-graphics-sprite-02ba2017f819a5ae8534ac216c364e40.png?ex=66b12573&is=66afd3f3&hm=ce6e58214339d431b88dd887dd122a9eef5bcf55294e733e8499e0420815d72e&=&format=webp&quality=lossless&width=1332&height=1065';
+
+// Create an array to store explosion animations
+const explosions = [];
+
+function createEnemy() {
+  return {
+    x: Math.random() * (canvas.width - 100),
+    y: 0,
+    width: 100,
+    height: 100,
+    speed: 2,
+    health: 24,
+    maxHealth: 24,
+    shakeTime: 0,
+    shakeIntensity: 0,
+    isFlickering: false,
+    flickerTime: 0,
+    flickerDuration: 5,
+    pointValue: 100,
+    hitEffect: null
+  };
+}
+
+function drawPlayer() {
+  player.tickCount++;
+
+  if (player.tickCount > player.ticksPerFrame) {
+    player.tickCount = 0;
+    player.frameIndex = (player.frameIndex + 1) % playerSprites[player.direction].length;
+  }
+
+  if (player.isFlickering) {
+    if (player.flickerTime % 4 < 2) {
+      ctx.globalAlpha = 0.5;
+    }
+    player.flickerTime++;
+    if (player.flickerTime >= player.flickerDuration) {
+      player.isFlickering = false;
+      player.flickerTime = 0;
+    }
+  }
+
+  const playerImage = playerImages[player.direction][player.frameIndex];
+  if (playerImage) {
+    ctx.drawImage(playerImage, player.x, player.y, player.width, player.height);
+  } else {
+    // Draw a fallback rectangle if the image failed to load
+    ctx.fillStyle = '#00FF00';  // Green color for fallback
+    ctx.fillRect(player.x, player.y, player.width, player.height);
+  }
+
+  ctx.globalAlpha = 1;
+
+  // Draw hit effect if player is hit
+  if (player.hitEffect) {
+    const { frame, x, y } = player.hitEffect;
+    const frameSize = 192; // Assuming the explosion sprite has 192x192 frames
+    const spriteColumns = 6; // Number of columns in the sprite sheet
+    const spriteRows = 5; // Number of rows in the sprite sheet
+
+    const sourceX = (frame % spriteColumns) * frameSize;
+    const sourceY = Math.floor(frame / spriteColumns) * frameSize;
+
+    ctx.drawImage(
+      hitEffectSprite,
+      sourceX, sourceY, frameSize, frameSize,
+      x - frameSize / 2, y - frameSize / 2, frameSize, frameSize
+    );
+    
+    player.hitEffect.frame++;
+    if (player.hitEffect.frame >= spriteColumns * spriteRows) {
+      player.hitEffect = null;
+    }
+  }
+}
+
+function drawEnemies() {
+  enemies.forEach(enemy => {
+    let drawX = enemy.x;
+    let drawY = enemy.y;
+    
+    if (enemy.shakeTime > 0) {
+      drawX += Math.random() * enemy.shakeIntensity - enemy.shakeIntensity / 2;
+      drawY += Math.random() * enemy.shakeIntensity - enemy.shakeIntensity / 2;
+      enemy.shakeTime--;
+    }
+    
+    if (enemy.isFlickering) {
+      if (enemy.flickerTime % 2 === 0) {
+        ctx.globalAlpha = 0.5;
+      }
+      enemy.flickerTime++;
+      if (enemy.flickerTime >= enemy.flickerDuration) {
+        enemy.isFlickering = false;
+        enemy.flickerTime = 0;
+      }
+    }
+    
+    ctx.drawImage(enemySprite, drawX, drawY, enemy.width, enemy.height);
+    
+    ctx.globalAlpha = 1;
+    
+    const healthBarWidth = enemy.width;
+    const healthBarHeight = 8;
+    const healthPercentage = enemy.health / enemy.maxHealth;
+    
+    ctx.fillStyle = 'red';
+    ctx.fillRect(drawX, drawY - 15, healthBarWidth, healthBarHeight);
+    
+    ctx.fillStyle = 'green';
+    ctx.fillRect(drawX, drawY - 15, healthBarWidth * healthPercentage, healthBarHeight);
+
+    // Draw hit effect if enemy is hit
+    if (enemy.hitEffect) {
+      const { frame, x, y } = enemy.hitEffect;
+      const frameSize = 192; // Assuming the explosion sprite has 192x192 frames
+      const spriteColumns = 6; // Number of columns in the sprite sheet
+      const spriteRows = 5; // Number of rows in the sprite sheet
+
+      const sourceX = (frame % spriteColumns) * frameSize;
+      const sourceY = Math.floor(frame / spriteColumns) * frameSize;
+
+      ctx.drawImage(
+        hitEffectSprite,
+        sourceX, sourceY, frameSize, frameSize,
+        x - frameSize / 2, y - frameSize / 2, frameSize, frameSize
+      );
+      
+      enemy.hitEffect.frame++;
+      if (enemy.hitEffect.frame >= spriteColumns * spriteRows) {
+        enemy.hitEffect = null;
+      }
+    }
+  });
+}
+
+function drawBullets() {
+  player.bullets.forEach(bullet => {
+    ctx.drawImage(bulletSprite, bullet.x - bullet.width / 2, bullet.y, bullet.width, bullet.height);
+  });
+}
+
+function drawScore() {
+  ctx.fillStyle = 'white';
+  ctx.font = '24px Arial';
+  ctx.textAlign = 'left';
+  ctx.fillText(`Score: ${player.score}`, 10, 30);
+}
+
+function movePlayer() {
+  player.x += player.dx;
+  player.y += player.dy;
+  
+  if (player.x < 0) player.x = 0;
+  if (player.x + player.width > canvas.width) player.x = canvas.width - player.width;
+  if (player.y < 0) player.y = 0;
+  if (player.y + player.height > canvas.height) player.y = canvas.height - player.height;
+}
+
+function moveEnemies() {
+  enemies.forEach(enemy => {
+    enemy.y += enemy.speed;
+  });
+}
+
+function moveBullets() {
+  player.bullets.forEach(bullet => {
+    bullet.y -= bullet.speed;
+    bullet.x += bullet.spreadX;
+  });
+  player.bullets = player.bullets.filter(bullet => bullet.y + bullet.height > 0 && bullet.x > 0 && bullet.x < canvas.width);
+}
+
+function checkCollisions() {
+  if (player.invincibilityTime > 0) {
+    player.invincibilityTime--;
+  }
+
+  enemies.forEach((enemy, enemyIndex) => {
+    if (
+      player.x < enemy.x + enemy.width &&
+      player.x + player.width > enemy.x &&
+      player.y < enemy.y + enemy.height &&
+      player.y + player.height > enemy.y &&
+      player.invincibilityTime === 0
+    ) {
+      player.health -= 10;
+      player.isFlickering = true;
+      player.flickerTime = 0;
+      player.invincibilityTime = player.invincibilityDuration;
+      // Add hit effect to player
+      player.hitEffect = {
+        frame: 0,
+        x: player.x + player.width / 2,
+        y: player.y + player.height / 2
+      };
+      if (player.health <= 0) {
+        console.log('Game Over!');
+      }
+    }
+    
+    player.bullets.forEach((bullet, bulletIndex) => {
+      if (
+        bullet.x - bullet.width / 2 < enemy.x + enemy.width &&
+        bullet.x + bullet.width / 2 > enemy.x &&
+        bullet.y < enemy.y + enemy.height &&
+        bullet.y + bullet.height > enemy.y
+      ) {
+        enemy.health--;
+        enemy.isFlickering = true;
+        enemy.flickerTime = 0;
+        // Add hit effect to enemy
+        enemy.hitEffect = {
+          frame: 0,
+          x: bullet.x,
+          y: bullet.y
+        };
+        if (enemy.health <= 0) {
+          player.score += enemy.pointValue;
+          // Add explosion cluster when enemy is destroyed
+          createExplosionCluster(enemy.x + enemy.width / 2, enemy.y + enemy.height / 2);
+          enemies.splice(enemyIndex, 1);
+        } else {
+          enemy.shakeTime = 10;
+          enemy.shakeIntensity = 5;
+        }
+        player.bullets.splice(bulletIndex, 1);
+      }
+    });
+  });
+}
+
+function shoot() {
+  const now = Date.now();
+  if (now - player.lastShot >= player.fireRate) {
+    const bulletSpread = 15;
+    const startX = player.x + player.width / 2 - (player.guns - 1) * bulletSpread / 2;
+    
+    for (let i = 0; i < player.guns; i++) {
+      const spreadAngle = (i - (player.guns - 1) / 2) * 0.1;
+      player.bullets.push({
+        x: startX + i * bulletSpread,
+        y: player.y,
+        width: 30,
+        height: 30,
+        speed: 7,
+        spreadX: Math.tan(spreadAngle) * 7
+      });
+    }
+    player.lastShot = now;
+  }
+}
+
+function createExplosionCluster(x, y) {
+  const numExplosions = 5;
+  const spread = 30;
+
+  for (let i = 0; i < numExplosions; i++) {
+    const offsetX = (Math.random() - 0.5) * spread;
+    const offsetY = (Math.random() - 0.5) * spread;
+    const delay = Math.random() * 10;
+    const scale = 0.5 + Math.random() * 0.5;
+
+    explosions.push({
+      x: x + offsetX,
+      y: y + offsetY,
+      frame: 0,
+      delay: delay,
+      scale: scale
+    });
+  }
+}
+
+function drawExplosions() {
+  explosions.forEach((explosion, index) => {
+    if (explosion.delay > 0) {
+      explosion.delay--;
+      return;
+    }
+
+    const frameSize = 192; // Assuming the explosion sprite has 192x192 frames
+    const spriteColumns = 6; // Number of columns in the sprite sheet
+    const spriteRows = 5; // Number of rows in the sprite sheet
+
+    const sourceX = (explosion.frame % spriteColumns) * frameSize;
+    const sourceY = Math.floor(explosion.frame / spriteColumns) * frameSize;
+
+    const scaledSize = frameSize * explosion.scale;
+
+    ctx.drawImage(
+      hitEffectSprite,
+      sourceX, sourceY, frameSize, frameSize,
+      explosion.x - scaledSize / 2, explosion.y - scaledSize / 2, scaledSize, scaledSize
+    );
+
+    explosion.frame++;
+    if (explosion.frame >= spriteColumns * spriteRows) {
+      explosions.splice(index, 1);
+    }
+  });
+}
+
+function gameLoop() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  
+  movePlayer();
+  moveEnemies();
+  moveBullets();
+  
+  if (player.isShooting) {
+    shoot();
+  }
+  
+  drawPlayer();
+  drawEnemies();
+  drawBullets();
+  drawScore();
+  drawExplosions();
+  
+  checkCollisions();
+  
+  if (Math.random() < 0.02) enemies.push(createEnemy());
+  
+  requestAnimationFrame(gameLoop);
+}
+
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'ArrowLeft') player.dx = -player.speed;
+  if (e.key === 'ArrowRight') player.dx = player.speed;
+  if (e.key === 'ArrowUp') player.dy = -player.speed;
+  if (e.key === 'ArrowDown') player.dy = player.speed;
+  if (e.key === ' ') {
+    player.isShooting = true;
+  }
+});
+
+document.addEventListener('keyup', (e) => {
+  if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') player.dx = 0;
+  if (e.key === 'ArrowUp' || e.key === 'ArrowDown') player.dy = 0;
+  if (e.key === ' ') {
+    player.isShooting = false;
+  }
+});
+
+canvas.addEventListener('mousemove', (e) => {
+  const rect = canvas.getBoundingClientRect();
+  const mouseX = e.clientX - rect.left;
+  const mouseY = e.clientY - rect.top;
+  
+  const oldX = player.x;
+  player.x = mouseX - player.width / 2;
+  player.y = mouseY - player.height / 2;
+  
+  if (player.x < 0) player.x = 0;
+  if (player.x + player.width > canvas.width) player.x = canvas.width - player.width;
+  if (player.y < 0) player.y = 0;
+  if (player.y + player.height > canvas.height) player.y = canvas.height - player.height;
+
+  const movement = player.x - oldX;
+  if (movement < -1) {
+    player.direction = 'left';
+  } else if (movement > 1) {
+    player.direction = 'right';
+  } else {
+    player.direction = 'default';
+  }
+
+  player.lastX = player.x;
+});
+
+canvas.addEventListener('mousedown', () => {
+  player.isShooting = true;
+});
+
+canvas.addEventListener('mouseup', () => {
+  player.isShooting = false;
+});
+
+canvas.addEventListener('mouseleave', () => {
+  player.isShooting = false;
+});
+
+gameLoop();
+</script>
+
+</body></html>
